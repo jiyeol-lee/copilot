@@ -11,25 +11,61 @@ import (
 	"time"
 )
 
-type Copilot struct {
+type copilot struct {
 	copilotToken string
 	expiresAt    int
 }
 
-func (c *Copilot) ChatCompletion(model string, messages []map[string]string) (string, error) {
+type ChatCompletionResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices"`
+}
+
+func NewCopilot() (*copilot, error) {
+	c := &copilot{
+		copilotToken: "",
+		expiresAt:    0,
+	}
+
 	err := c.loadCopilotToken()
 	if err != nil {
-		return "", fmt.Errorf("failed to load Copilot token: %w", err)
+		return nil, fmt.Errorf("failed to load Copilot token: %w", err)
+	}
+	return c, nil
+}
+
+func (c *copilot) ChatCompletion(
+	model string,
+	messages []map[string]string,
+) (*ChatCompletionResponse, error) {
+	err := c.loadCopilotToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load Copilot token: %w", err)
 	}
 
 	response, err := getChatCompletion(c.copilotToken, model, messages)
 	if err != nil {
-		return "", fmt.Errorf("failed to get chat completion: %w", err)
+		return nil, fmt.Errorf("failed to get chat completion: %w", err)
 	}
-	return response, nil
+
+	var unmarshaledResponse ChatCompletionResponse
+	err = json.Unmarshal([]byte(response), &unmarshaledResponse)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if len(unmarshaledResponse.Choices) == 0 {
+		return nil, fmt.Errorf("no choices found in response")
+	}
+
+	return &unmarshaledResponse, nil
 }
 
-func (c *Copilot) loadCopilotToken() error {
+func (c *copilot) loadCopilotToken() error {
 	if c.copilotToken != "" && c.expiresAt > int(time.Now().Unix()) {
 		return nil
 	}
